@@ -27,9 +27,10 @@ public class RootActivity extends Activity implements Button.OnClickListener {
     	
         super.onCreate(savedInstanceState);
         
-        // check if we are started by a send action
+        // check if we are started by a send action or a send-multiple action
         String action = getIntent().getAction();
-        if (!Intent.ACTION_SEND.equals (action)) finish();
+        if (!Intent.ACTION_SEND.equals (action) &&
+        	!Intent.ACTION_SEND_MULTIPLE.equals (action)) finish();
         
         setContentView(R.layout.main);
         registerListeners ();
@@ -50,27 +51,28 @@ public class RootActivity extends Activity implements Button.OnClickListener {
     	super.onDestroy();
     }
 
-    /** Called when a button is clicked */
+	/** Called when a button is clicked */
 	@Override
-	public void onClick (View v) {
-		
+	public void onClick(View v) {
+
 		// dubious click, do nothing
-		if (null == v) return;
-		
+		if (null == v)
+			return;
+
 		int id = v.getId();
-		
+
 		// determine action
-		switch (id){
-			case R.id.button_ok:
-				// process click and return
-				mailToPrinter ();
-				return;
-			default:
-				// dubious click, do nothing
-				Log.e (TAG, "Unknown click landed here. ID was " + id + ".");
-				return;
+		switch (id) {
+		case R.id.button_ok:
+			// process click and return
+			mailToPrinter();
+			return;
+		default:
+			// dubious click, do nothing
+			Log.e(TAG, "Unknown click landed here. ID was " + id + ".");
+			return;
 		}
-		
+
 	}
 	
 	/**
@@ -78,47 +80,52 @@ public class RootActivity extends Activity implements Button.OnClickListener {
 	 * @throws IllegalStateException
 	 * 				if the layout is invalid
 	 */
-	private void mailToPrinter (){
-		
+	private void mailToPrinter() {
+
 		// retrieve inputs
 		int numberOfCopies = 0;
 		String andrewId = null;
-		Uri imageUri = null;
+		ArrayList<Uri> imageUris = null;
 		try {
-			numberOfCopies = retrieveNCopies ();
-			andrewId = retrieveAndrewId ();
-			imageUri = retrieveImage ();
-		}catch (NumberFormatException e){
+			numberOfCopies = retrieveNCopies();
+			andrewId = retrieveAndrewId();
+			imageUris = retrieveImageUris();
+		} catch (NumberFormatException e) {
 			// TODO
-			Log.d (TAG, "Invalid number of copies.");
+			Log.d(TAG, "Invalid number of copies.");
 			return;
-		}catch (InvalidAndrewIdException e){
+		} catch (InvalidAndrewIdException e) {
 			// TODO
-			Log.d (TAG, "Invalid Andrew id.");
+			Log.d(TAG, "Invalid Andrew id.");
 			return;
-		}catch (InvalidDataException e){
+		} catch (InvalidDataException e) {
 			// TODO
-			Log.d (TAG, "Invalid image data.");
+			Log.d(TAG, "Invalid image data.");
 			return;
 		}
 		
+		if (imageUris.size() <= 0){
+			// TODO show some error message
+			return;
+		}
+
 		// send to mail app
-		Intent email = new Intent (Intent.ACTION_SEND_MULTIPLE);
-		String recipients[] = { "user@fakehost.com","user2@fakehost.com" };
-		ArrayList<Uri> uris = new ArrayList<Uri>();
-		uris.add(imageUri);
-		
-		email.setType ("plain/text");
+		Intent email = new Intent(Intent.ACTION_SEND_MULTIPLE);
+		String recipients[] = { "user@fakehost.com", "user2@fakehost.com" };
+
+		email.setType("plain/text");
 		email.putExtra(Intent.EXTRA_EMAIL, recipients);
-		email.putExtra(Intent.EXTRA_SUBJECT, formatJson (numberOfCopies, andrewId));
-		email.putExtra(Intent.EXTRA_TEXT, "Brought to you by the CMU Mobile Apps Club.");  
-		email.putParcelableArrayListExtra (Intent.EXTRA_STREAM, uris);
-		
-	    startActivity (Intent.createChooser (email, "Send email using"));  
-		
+		email.putExtra(Intent.EXTRA_SUBJECT,
+				formatJson(numberOfCopies, andrewId));
+		email.putExtra(Intent.EXTRA_TEXT,
+				"Brought to you by the CMU Mobile Apps Club.");
+		email.putParcelableArrayListExtra(Intent.EXTRA_STREAM, imageUris);
+
+		startActivity(Intent.createChooser(email, "Send email using"));
+
 		// close activity
-		finish ();
-		
+		finish();
+
 	}
 	
 	/**
@@ -134,23 +141,32 @@ public class RootActivity extends Activity implements Button.OnClickListener {
 	}
 	
 	/**
-	 * Retrieves and validates image path
+	 * Retrieves and validates image paths
 	 * @throws InvalidDataException
 	 * 		if input data is invalid
+	 * @return list of image uris
 	 */
-	private Uri retrieveImage() throws InvalidDataException {
+	private ArrayList<Uri> retrieveImageUris() throws InvalidDataException {
 		
-		Intent i = getIntent ();
-		Bundle extras = i.getExtras();
+		Intent intent = getIntent ();
+		Bundle extras = intent.getExtras();
 		
 		if (null == extras) throw new InvalidDataException ("Missing data.");
 		if (!extras.containsKey(Intent.EXTRA_STREAM)) throw new InvalidDataException ("Missing data.");
 		
-		// get uri and open stream
-		Uri uri = (Uri) extras.getParcelable (Intent.EXTRA_STREAM);
+		// get uri(s)
+		ArrayList<Uri> uris;
+		if (intent.getAction().equals(Intent.ACTION_SEND_MULTIPLE)){
+			uris = extras.getParcelableArrayList(Intent.EXTRA_STREAM);
+			if (null == uris) throw new InvalidDataException ("Missing data.");
+		}else {
+			Uri uri = (Uri) extras.getParcelable (Intent.EXTRA_STREAM);
+			if (null == uri) throw new InvalidDataException ("Missing data.");
+			uris = new ArrayList<Uri>();
+			uris.add(uri);
+		}
 		
-		if (null == uri) throw new InvalidDataException ("Missing data.");
-		return uri;
+		return uris;
 		
 //		ContentResolver cr = getContentResolver ();
 //		InputStream is = null;
@@ -220,24 +236,29 @@ public class RootActivity extends Activity implements Button.OnClickListener {
 	
 	/**
 	 * Registers listeners - call this onCreate
+	 * 
 	 * @throws IllegalStateException
-	 * 				if the layout is invalid
+	 *             if the layout is invalid
 	 */
-	private void registerListeners (){
+	private void registerListeners() {
 		// register button listener
-        Button ok = (Button) findViewById (R.id.button_ok);
-        if (null == ok) throw new IllegalStateException ("Invalid layout: OK button missing.");
-        ok.setOnClickListener (this);
+		Button ok = (Button) findViewById(R.id.button_ok);
+		if (null == ok)
+			throw new IllegalStateException(
+					"Invalid layout: OK button missing.");
+		ok.setOnClickListener(this);
 	}
 	
 	/**
 	 * Unregister listeners - call this onDestroy
 	 */
-	private void unregisterListeners (){
+	private void unregisterListeners() {
 		// unregister button listener
-        Button ok = (Button) findViewById (R.id.button_ok);
-        if (null == ok) throw new IllegalArgumentException ("Invalid layout: OK button missing.");
-        ok.setOnClickListener(null);
+		Button ok = (Button) findViewById(R.id.button_ok);
+		if (null == ok)
+			throw new IllegalArgumentException(
+					"Invalid layout: OK button missing.");
+		ok.setOnClickListener(null);
 	}
     
 }
